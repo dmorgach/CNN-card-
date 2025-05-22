@@ -1,0 +1,138 @@
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras import layers, models
+from tensorflow.keras.optimizers import Adam
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from tensorflow.keras.callbacks import EarlyStopping
+
+early_stopping = EarlyStopping(
+    monitor='val_loss',            # Какой параметр мониторим
+    patience=7,                    # Количество эпох без улучшения, после которых обучение остановится
+    restore_best_weights=True      # Восстанавление весов
+)
+
+
+train_datagen = ImageDataGenerator(rescale=1./255, validation_split = 0.15) 
+train_generator = train_datagen.flow_from_directory (
+    'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\dataset_augmented\\train',
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical',       # многоклассовая классификация
+    subset='training'
+)
+
+validation_generator = train_datagen.flow_from_directory (
+    'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\dataset_augmented\\train',                 
+    target_size=(150, 150), 
+    batch_size=32,
+    class_mode='categorical',     
+    subset='validation'
+)
+
+
+
+
+model = models.Sequential([
+    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3)),
+    layers.MaxPooling2D(2, 2),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D(2, 2),
+    layers.Conv2D(128, (3, 3), activation='relu'),
+    layers.MaxPooling2D(2, 2),
+    layers.Flatten(),
+    layers.Dense(512, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(len(train_generator.class_indices), activation='softmax')  # количество классов
+])
+
+model.compile(optimizer=Adam(learning_rate=0.0001), 
+              loss='categorical_crossentropy', 
+              metrics=['accuracy'])
+
+'''
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // train_generator.batch_size,
+    epochs=150,
+    validation_data = validation_generator,
+    verbose=1 
+)
+'''
+
+history = model.fit(
+    train_generator, 
+    epochs=150, 
+    validation_data=validation_generator, 
+    callbacks=[early_stopping],       # Добавляем коллбэк раннего завершения
+    verbose=1)
+#
+# 
+model.save('card_recognition_model.h5')
+
+
+plt.plot(history.history['accuracy'], label='accuracy')
+plt.plot(history.history['loss'], label='loss')
+plt.xlabel('Epoch')
+plt.ylabel('Value')
+plt.legend(loc="upper left")
+plt.show()
+print(history.history)
+
+# Точности
+train_accuracy = history.history['accuracy']
+val_accuracy = history.history['val_accuracy']
+
+# Потери
+train_loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+
+# График точности
+plt.plot(train_accuracy, label='Train Accuracy')
+plt.plot(val_accuracy, label='Validation Accuracy')
+plt.title('Model Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+# График потерь
+plt.plot(train_loss, label='Train Loss')
+plt.plot(val_loss, label='Validation Loss')
+plt.title('Model Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+print(val_accuracy, train_accuracy, val_loss, train_loss)
+
+#
+model = load_model('card_recognition_model.h5')
+test_datagen = ImageDataGenerator(rescale=1./255)  
+
+test_generator = test_datagen.flow_from_directory(
+    'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\d\\test',     
+    target_size=(150, 150),    
+    batch_size=32,
+    class_mode='categorical' 
+)
+
+
+
+import numpy as np
+from tensorflow.keras.preprocessing import image
+
+#img_path = 'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\d\\10s.png'  # Путь к изображению карты
+#img_path = 'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\pix2\\9_spade.pix.png'
+img_path = 'C:\\Users\\dmorg\\Prog\\Neironka\\Dataset\\pix2\\4_spade_pix.png'
+img = image.load_img(img_path, target_size=(150, 150))
+
+img_array = image.img_to_array(img) / 255.0
+img_array = np.expand_dims(img_array, axis=0)
+
+prediction = model.predict(img_array)
+predicted_class = np.argmax(prediction) 
+
+class_labels = list(test_generator.class_indices.keys())
+print(f'Predicted class: {class_labels[predicted_class]}')
